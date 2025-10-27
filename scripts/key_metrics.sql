@@ -91,15 +91,50 @@ ORDER BY  [Datetrunc Month]
 SELECT 
     [Order Date], 
     [Total Sales], 
-    SUM([Total Sales]) OVER(PARTITION BY [Order Year] ORDER BY [Order Date] ASC) AS [Running Total Sales]
+    -- Partition by year to reset the running total at the start of each year
+    SUM([Total Sales]) OVER( ORDER BY [Order Date] ASC) AS [Running Total Sales]
 FROM
 (
     SELECT 
-        DATETRUNC(year, order_date) AS [Order Year],
-        DATETRUNC(month, order_date) AS [Order Date], 
+        DATETRUNC(year, order_date) AS [Order Date],
         SUM(sales_amount) AS [Total Sales]
     FROM gold.fact_sales
     WHERE order_date IS NOT NULL
-    GROUP BY DATETRUNC(year, order_date), DATETRUNC(month, order_date)
+    GROUP BY DATETRUNC(year, order_date)
 ) t 
-ORDER BY [Order Year], [Order Date] ASC
+ORDER BY [Order Date] ASC
+
+
+-- Performance Analysis 
+
+/* Analyze the yearly performance of each product by comparing the:
+
+1) average sales performance of the product 
+2) the previous' years performance 
+
+
+*/
+
+
+WITH yearly_product_sales AS (
+
+    SELECT 
+        YEAR(s.order_date) AS [Order Year],
+       pr.product_name AS [Product Name],
+        SUM(s.sales_amount) AS [Current Sales]
+    FROM gold.fact_sales s
+    LEFT JOIN gold.dim_product_info pr ON pr.product_id = s.product_key
+        WHERE order_date IS NOT NULL
+        GROUP BY YEAR(s.order_date), pr.product_name
+
+)
+
+SELECT 
+    [Order Year],
+    [Product Name], 
+    [Current Sales],
+AVG([Current Sales]) AS [Average Sales],
+LAG([Current Sales]) OVER(PARTITION BY [Product Name] ORDER BY [Order Year]) AS [Previous Year Sales]
+FROM yearly_product_sales
+GROUP BY [Order Year], [Product Name], [Current Sales];
+
