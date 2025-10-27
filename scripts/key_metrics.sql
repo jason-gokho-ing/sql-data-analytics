@@ -138,3 +138,82 @@ LAG([Current Sales]) OVER(PARTITION BY [Product Name] ORDER BY [Order Year]) AS 
 FROM yearly_product_sales
 GROUP BY [Order Year], [Product Name], [Current Sales];
 
+
+-- Performance Analysis - Yearly product performance
+WITH yearly_product_sales AS (
+    SELECT 
+        YEAR(s.order_date) AS OrderYear,
+        p.product_name AS ProductName,
+        SUM(s.sales_amount) AS CurrentSales
+    FROM gold.fact_sales s
+    LEFT JOIN gold.dim_product_info p ON s.product_key = p.product_key
+    WHERE s.order_date IS NOT NULL
+    GROUP BY YEAR(s.order_date), p.product_name
+)
+
+SELECT
+    OrderYear,
+    ProductName,
+    CurrentSales,
+    AverageSales,
+    PreviousYearSales,
+    CurrentSales - COALESCE(PreviousYearSales, 0) AS DifferenceFromPreviousYear,
+    CASE
+        WHEN PreviousYearSales IS NULL THEN 'No Prior Year'
+        WHEN CurrentSales > PreviousYearSales THEN 'Higher Than Prev'
+        WHEN CurrentSales < PreviousYearSales THEN 'Lower Than Prev'
+        ELSE 'No Change'
+    END AS Level
+FROM (
+    SELECT
+        OrderYear,
+        ProductName,
+        CurrentSales,
+        AVG(CurrentSales) OVER (PARTITION BY ProductName) AS AverageSales,
+        LAG(CurrentSales) OVER (PARTITION BY ProductName ORDER BY OrderYear) AS PreviousYearSales
+    FROM yearly_product_sales
+) t
+ORDER BY ProductName, OrderYear;
+
+
+-- Performance Analysis - Monthly comparisons (per product)
+WITH monthly_product_sales AS (
+    SELECT
+        FORMAT(s.order_date, 'yyyy-MM') AS OrderMonthKey,
+        DATETRUNC(month, s.order_date) AS OrderMonthDate,
+        p.product_name AS ProductName,
+        SUM(s.sales_amount) AS CurrentSales
+    FROM gold.fact_sales s
+    LEFT JOIN gold.dim_product_info p ON s.product_key = p.product_key
+    WHERE s.order_date IS NOT NULL
+    GROUP BY FORMAT(s.order_date, 'yyyy-MM'), DATETRUNC(month, s.order_date), p.product_name
+)
+
+SELECT
+    OrderMonthKey AS OrderMonth,
+    ProductName,
+    CurrentSales,
+    AVG(CurrentSales) OVER (PARTITION BY ProductName) AS AverageProductSales,
+    CurrentSales - AVG(CurrentSales) OVER (PARTITION BY ProductName) AS DifferenceFromAverage,
+    CASE
+        WHEN CurrentSales > AVG(CurrentSales) OVER (PARTITION BY ProductName) THEN 'Above Avg'
+        WHEN CurrentSales < AVG(CurrentSales) OVER (PARTITION BY ProductName) THEN 'Below Avg'
+        ELSE 'Avg'
+    END AS Level
+FROM monthly_product_sales
+WHERE ProductName = 'Mountain-100 Black- 38'
+ORDER BY OrderMonthDate, ProductName;
+
+
+-- Part-to-Whole Analysis 
+
+-- Category contribution
+SELECT
+    p.category AS ProductCategory,
+    SUM(s.sales_amount) AS TotalSalesPerCategory,
+    SUM(s.sales_amount) * 1.0 / NULLIF(SUM(SUM(s.sales_amount)) OVER (), 0) AS ShareOfTotal
+FROM gold.fact_sales s
+LEFT JOIN gold.dim_product_info p ON s.product_key = p.product_key
+WHERE s.order_date IS NOT NULL
+GROUP BY p.category
+ORDER BY TotalSalesPerCategory DESC;
