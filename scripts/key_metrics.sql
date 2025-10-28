@@ -3,7 +3,6 @@ USE DWH_Analytics;
 GO
 
 
-
 -- Generate a Report that shows all the key metrics of the business
 SELECT 'Total Sales' AS measure_name, SUM(sales_amount) AS measure_value
 FROM gold.fact_sales
@@ -208,12 +207,24 @@ ORDER BY OrderMonthDate, ProductName;
 -- Part-to-Whole Analysis 
 
 -- Category contribution
+
+WITH category_sales AS (
+
 SELECT
-    p.category AS ProductCategory,
-    SUM(s.sales_amount) AS TotalSalesPerCategory,
-    SUM(s.sales_amount) * 1.0 / NULLIF(SUM(SUM(s.sales_amount)) OVER (), 0) AS ShareOfTotal
+    pr.category AS [Product Category],
+    SUM(s.sales_amount) AS [Total Sales]
 FROM gold.fact_sales s
-LEFT JOIN gold.dim_product_info p ON s.product_key = p.product_key
+LEFT JOIN gold.dim_product_info pr ON s.product_key = pr.product_key
 WHERE s.order_date IS NOT NULL
-GROUP BY p.category
-ORDER BY TotalSalesPerCategory DESC;
+GROUP BY pr.category
+
+)
+
+
+SELECT 
+    [Product Category], 
+    FORMAT([Total Sales] / SUM([Total Sales]) OVER(),'P') AS [Percentage of Sales]
+FROM category_sales;
+
+-- Data Segmentation
+
