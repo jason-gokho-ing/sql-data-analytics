@@ -122,7 +122,7 @@ WITH yearly_product_sales AS (
        pr.product_name AS [Product Name],
         SUM(s.sales_amount) AS [Current Sales]
     FROM gold.fact_sales s
-    LEFT JOIN gold.dim_product_info pr ON pr.product_id = s.product_key
+    LEFT JOIN gold.dim_product_info pr ON pr.product_key = s.product_key
         WHERE order_date IS NOT NULL
         GROUP BY YEAR(s.order_date), pr.product_name
 
@@ -200,7 +200,6 @@ SELECT
         ELSE 'Avg'
     END AS Level
 FROM monthly_product_sales
-WHERE ProductName = 'Mountain-100 Black- 38'
 ORDER BY OrderMonthDate, ProductName;
 
 
